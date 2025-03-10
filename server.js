@@ -5,7 +5,7 @@ import dagre from 'cytoscape-dagre';
 import buildHistoryGraph from './buildHistoryGraph.js';
 
 import express from 'express';
-import { createServer } from 'http';
+import { createServer} from 'http';
 
 import { WebSocketServer } from 'ws';
 
@@ -190,30 +190,13 @@ const app = express();
 // Serve static frontend files from Vite's `dist` folder
 app.use(express.static('dist'));
 
-// Serve a simple response for HTTP requests
-// app.get('/', (req, res) => {
-//   res.send('Forking Paths WebSocket Server is running.');
-// });
-
-// // Handle the favicon request to prevent errors
-// app.get('/favicon.ico', (req, res) => res.status(204));
-
 // Create an HTTP server and attach WebSocket
-const server = createServer(app);
+const server = createServer(app, (req, res)=>{
+    res.writeHead(200);
+    res.end('WebRTC signaling server is running\n');
+});
 // Create a WebSocket server that only upgrades `/ws` requests
 const wss = new WebSocketServer({ noServer: true });
-
-// server.on('upgrade', (request, socket, head) => {
-//     console.log('upgrade')
-//     if (request.url === '/ws') {
-//       wss.handleUpgrade(request, socket, head, (ws) => {
-//         wss.emit('connection', ws, request);
-//       });
-//     } else {
-//       socket.destroy();
-//     }
-//   });
-
 
 server.on('upgrade', (request, socket, head) => {
     console.log('🚀 WebSocket upgrade request received');
@@ -251,6 +234,17 @@ wss.on('connection', (ws, req) => {
 
             case 'expandNodes':
 
+            break
+            case 'newPeer':
+                // Broadcast the message to every other connected client.
+                wss.clients.forEach((client) => {
+                    if (client !== ws && client.readyState === WebSocket.OPEN) {
+                        client.send({
+                            cmd: 'newPeer',
+                            msg: message
+                        });
+                    }
+                });
             break
             
             default:
@@ -315,9 +309,6 @@ function updateHistoryGraph(ws, meta, docHistoryGraphStyling){
 
     ws.send(JSON.stringify(graphJSON))
 }
-
-
-
 
 // Collapsing nodes into a parent node
 function collapseNodes(cy, nodeIds, collapsedNodeId) {
