@@ -213,7 +213,9 @@ wss.on('connection', (ws, req) => {
     console.log(`New connection from ${clientIp}`);
     // Handle messages received from clients
     ws.on('message', (message) => {
+       
         let msg = JSON.parse(message)
+        console.log(msg)
         switch(msg.cmd){
             case 'updateGraph':
                 meta = msg.meta
@@ -236,18 +238,22 @@ wss.on('connection', (ws, req) => {
 
             break
             case 'newPeer':
+                console.log('new peer', msg.msg)
+                    // Convert the incoming message to a string if it’s a Buffer.
+                const payload = Buffer.isBuffer(message) ? message.toString() : message;
+
                 // Broadcast the message to every other connected client.
                 wss.clients.forEach((client) => {
-                    if (client !== ws && client.readyState === WebSocket.OPEN) {
-                        client.send({
+                    if (client !== ws) {
+                        client.send(JSON.stringify({
                             cmd: 'newPeer',
-                            msg: message
-                        });
+                            msg: payload
+                        }), { binary: false });
                     }
                 });
             break
             
-            default:
+            default: console.log('no switch case exists for msg:', message)
         }
         
         
