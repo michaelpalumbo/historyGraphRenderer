@@ -206,11 +206,22 @@ server.on('upgrade', (request, socket, head) => {
   });
 
   
+let numClients = 0
 // Handle client connections
 wss.on('connection', (ws, req) => {
+    numClients++
+
+    if (numClients >= 3) {
+        ws.send(JSON.stringify({ cmd: 'roomFull', message: 'Room is currently full' }));
+        // Force the connection to close with a standard closure code (1000) and an optional reason.
+        ws.close(1000, 'Room full, connection closed by server');
+        numClients--
+        return;
+      }
 
     const clientIp = req.socket.remoteAddress;
     console.log(`New connection from ${clientIp}`);
+    console.log(`Number of clients: ${numClients}`)
     // Handle messages received from clients
     ws.on('message', (message) => {
        
@@ -263,6 +274,8 @@ wss.on('connection', (ws, req) => {
     // Handle client disconnection
     ws.on('close', () => {
         console.log('Client disconnected');
+        numClients--
+        console.log('number of clients:', numClients)
     });
 
     // Handle errors
