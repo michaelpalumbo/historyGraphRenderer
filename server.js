@@ -211,7 +211,7 @@ let numClients = 0
 wss.on('connection', (ws, req) => {
     numClients++
 
-    if (numClients >= 3) {
+    if (numClients >= 5) {
         ws.send(JSON.stringify({ cmd: 'roomFull', message: 'Room is currently full' }));
         // Force the connection to close with a standard closure code (1000) and an optional reason.
         ws.close(1000, 'Room full, connection closed by server');
