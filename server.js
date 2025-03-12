@@ -215,7 +215,6 @@ wss.on('connection', (ws, req) => {
     ws.on('message', (message) => {
        
         let msg = JSON.parse(message)
-        console.log(msg)
         switch(msg.cmd){
             case 'updateGraph':
                 meta = msg.meta
@@ -238,7 +237,6 @@ wss.on('connection', (ws, req) => {
 
             break
             case 'newPeer':
-                console.log('new peer', msg.msg)
                     // Convert the incoming message to a string if it’s a Buffer.
                 const payload = Buffer.isBuffer(message) ? message.toString() : message;
 
