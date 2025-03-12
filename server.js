@@ -324,7 +324,10 @@ function updateHistoryGraph(ws, meta, docHistoryGraphStyling){
     // Send the graph JSON back to the client
     const graphJSON = historyDAG_cy.json();
 
-    ws.send(JSON.stringify(graphJSON))
+    ws.send(JSON.stringify({
+        cmd: "historyGraphRenderUpdate", 
+        data: graphJSON
+    }))
 }
 
 // Collapsing nodes into a parent node
