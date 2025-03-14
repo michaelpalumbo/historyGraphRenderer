@@ -9,24 +9,9 @@ import { createServer} from 'http';
 
 import { WebSocketServer } from 'ws';
 
+let peers = {
 
-
-
-
-// const historyGraphWorker = new Worker("./workers/historyGraphWorker.js");
-
-// let docHistoryGraphStyling = {
-//     nodeColours: {
-//         connect: "#004cb8",
-//         disconnect: "#b85c00",
-//         add: "#00b806",
-//         remove: "#b8000f",
-//         move: "#b89000",
-//         paramUpdate: "#6b00b8",
-//         clear: "#000000",
-//         blank_patch: "#ccc"
-//     }
-// }
+}
 
 let meta;
 let existingHistoryNodeIDs = new Set()
@@ -180,7 +165,42 @@ const historyDAG_cy = cytoscape({
     ]
 });
 
+// A simple in-memory store for rooms
+const rooms = {};
 
+// Helper function to assign a client to a room
+function assignRoom(ws, desiredRoom) {
+    // If a specific room is provided
+    if (desiredRoom) {
+      // If the desired room already exists
+      if (rooms[desiredRoom]) {
+        // If room is not full, assign the client there.
+        if (rooms[desiredRoom].length < 2) {
+          rooms[desiredRoom].push(ws);
+          return desiredRoom;
+        } else {
+          console.log(`Desired room ${desiredRoom} is full. Falling back to default assignment.`);
+        }
+      } else {
+        // Create the room if it doesn't exist.
+        rooms[desiredRoom] = [ws];
+        return desiredRoom;
+      }
+    }
+    
+    // Fallback: Loop over existing rooms and join one that has less than 2 clients.
+    for (const room in rooms) {
+      if (rooms[room].length < 2) {
+        rooms[room].push(ws);
+        return room;
+      }
+    }
+    
+    // If no room is available, create a new one with a default naming scheme.
+    const newRoom = `room${Object.keys(rooms).length + 1}`;
+    rooms[newRoom] = [ws];
+    return newRoom;
+  }
 
 const PORT = process.env.PORT || 3001;
 
@@ -211,14 +231,6 @@ let numClients = 0
 wss.on('connection', (ws, req) => {
     numClients++
 
-    if (numClients >= 5) {
-        ws.send(JSON.stringify({ cmd: 'roomFull', message: 'Room is currently full' }));
-        // Force the connection to close with a standard closure code (1000) and an optional reason.
-        ws.close(1000, 'Room full, connection closed by server');
-        numClients--
-        return;
-      }
-
     const clientIp = req.socket.remoteAddress;
     console.log(`New connection from ${clientIp}`);
     console.log(`Number of clients: ${numClients}`)
@@ -226,6 +238,7 @@ wss.on('connection', (ws, req) => {
     ws.on('message', (message) => {
        
         let msg = JSON.parse(message)
+
         switch(msg.cmd){
             case 'updateGraph':
                 meta = msg.meta
@@ -247,28 +260,54 @@ wss.on('connection', (ws, req) => {
             case 'expandNodes':
 
             break
-            case 'newPeer':
-                    // Convert the incoming message to a string if it’s a Buffer.
-                const payload = Buffer.isBuffer(message) ? message.toString() : message;
-
-                // Broadcast the message to every other connected client.
+            case 'joinRoom':
+                // Assign the connecting client to a room
+                const room = assignRoom(ws, msg.room);
+                ws.room = room;
+                ws.peerID = msg.peerID
+                console.log(`New client assigned to ${room}`);
+                // update all lobby pages
                 wss.clients.forEach((client) => {
-                    if (client !== ws) {
-                        client.send(JSON.stringify({
-                            cmd: 'newPeer',
-                            msg: payload
-                        }), { binary: false });
+                    if (client !== ws && client.lobby === true) {
+                        sendRooms(client)
                     }
                 });
             break
+            case 'newPeer':
+                // Convert the incoming message to a string if it’s a Buffer.
+                const payload = Buffer.isBuffer(message) ? message.toString() : message;
+                // peers[msg.peerID] = {}
+
+               
+                // Relay the message to the other client in the same room (if exists)
+                // Use ws.room (assigned in 'joinRoom') to determine the correct room.
+                const clientRoom = ws.room;
+                if (clientRoom && rooms[clientRoom]) {
+                rooms[clientRoom].forEach(client => {
+                    if (client !== ws && client.readyState === ws.OPEN) {
+                    client.send(JSON.stringify({
+                        cmd: 'newPeer',
+                        msg: payload
+                    }), { binary: false });
+                    }
+                });
+                } else {
+                console.error('Client not assigned to any room');
+                }
+
+                
+ 
+            break
+
+            case 'getRooms': 
+                ws.lobby = true
+                // Build an array of active rooms.
+                sendRooms(ws)
+            break;
+              
             
             default: console.log('no switch case exists for msg:', message)
         }
-        
-        
-
-        // Echo the message back to the client
-        // ws.send(`Server received: ${msg}`);
     });
 
     // Handle client disconnection
@@ -276,15 +315,27 @@ wss.on('connection', (ws, req) => {
         console.log('Client disconnected');
         numClients--
         console.log('number of clients:', numClients)
+        if (ws.room && rooms[ws.room]) {
+            // Remove the client from the room
+            rooms[ws.room] = rooms[ws.room].filter(client => client !== ws);
+            // Clean up the room if empty
+            if (rooms[ws.room].length === 0) {
+              delete rooms[ws.room];
+            }
+            // update all lobby clients
+            wss.clients.forEach((client) => {
+                if (client.lobby === true) {
+                    sendRooms(client)
+                }
+            });
+        }
+
     });
 
     // Handle errors
     ws.on('error', (error) => {
         console.error('WebSocket error:', error);
     });
-
-    // Send a welcome message to the client
-    // ws.send('Welcome to the WebSocket server!');
 });
 
 // Start the server
@@ -292,6 +343,25 @@ server.listen(PORT, () => {
     console.log(`✅ WebSocket server running on ws://localhost:${PORT}`);
 });
 
+function sendRooms(ws){
+    const activeRooms = [];
+    for (const roomName in rooms) {
+        // Only include rooms with at least one peer.
+        if (rooms[roomName].length > 0) {
+        const roomInfo = {
+            room: roomName,
+            peer1: rooms[roomName][0].peerID || null,
+            peer2: rooms[roomName].length > 1 ? rooms[roomName][1].peerID || null : null
+        };
+        activeRooms.push(roomInfo);
+        }
+    }
+    // Send the room info back to the client that requested it.
+    ws.send(JSON.stringify({
+        cmd: 'roomsInfo',
+        rooms: activeRooms
+    }));
+}
 
 function updateHistoryGraph(ws, meta, docHistoryGraphStyling){
 
