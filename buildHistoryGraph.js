@@ -22,8 +22,9 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
             // we now store the parent module data in the change message, so extract that so it doesn't appear as the label, and place it in the 'parent' prop
             // check if its a $PARENT or $PARENTS condition
             if(item.msg.includes('$PARENT ')){
-                label = item.msg.split('$PARENT ')[0]
+                
                 parent = item.msg.split('$PARENT ')[1]
+                label = `${item.msg.split('$PARENT ')[0]} ${parent.split('_')[0]}_${parent.split('_')[1]}`
             } else if (item.msg.includes("$PARENTS ")){
                 label = item.msg.split('$PARENTS ')[0]
                 parent = item.msg.split('$PARENTS ')[1]
@@ -31,6 +32,9 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
                 label = `loaded ${item.msg}`
                 // parent = []
             } 
+  
+
+
             // Check if the node already exists in the history graph
             if (!existingHistoryNodeIDs.has(nodeId)) {
                 const newNode = {
