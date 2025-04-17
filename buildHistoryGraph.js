@@ -13,6 +13,7 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const historyGraphYIncrement = 75
 
 function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling) {
 
@@ -59,12 +60,11 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
         }
 
         branch.history.forEach((item, i) => {
-                const y = rootY - (i + 1) * 50;
+                const y = rootY - (i + 1) * historyGraphYIncrement;
                 plannedYPositions.set(item.hash, y);
             });
     });
 
-    console.log(plannedYPositions)
 
  
 
