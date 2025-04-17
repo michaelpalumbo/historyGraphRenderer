@@ -6,17 +6,84 @@
  * @param {Object} docHistoryGraphStyling - Styling information for nodes.
  * @returns {Object} - An object containing nodes, edges, and updated existingHistoryNodeIDs.
  */
+import { writeFileSync } from 'fs'
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+
 function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling) {
+
+    const outputPath = join(__dirname, 'meta.json');
+    writeFileSync(outputPath, JSON.stringify(meta, null, 2));
     const nodes = [];
     const edges = [];
+
+    const nodeIdToYPos = new Map();
+    const branchRootY = new Map();
+
+    // Pass 1: calculate branch root Y positions
+    meta.branchOrder.forEach((branchName, branchIndex) => {
+    const branch = meta.branches[branchName];
+    const firstItem = branch.history[0];
+    let y;
+
+    if (firstItem && firstItem.parent) {
+        const parentId = Array.isArray(firstItem.parent) ? firstItem.parent[0] : firstItem.parent;
+        const parentY = nodeIdToYPos.get(parentId);
+        y = parentY !== undefined ? parentY : 0;
+    } else {
+        y = 0; // root branch
+    }
+
+        branchRootY.set(branchName, y);
+    });
+
+    const plannedYPositions = new Map();
+
+    meta.branchOrder.forEach(branchName => {
+        const branch = meta.branches[branchName];
+        const firstItem = branch.history[0];
+
+        let rootY = 0;
+
+        if (firstItem && firstItem.parent) {
+            const parentId = Array.isArray(firstItem.parent)
+            ? firstItem.parent[0]
+            : firstItem.parent;
+
+            const parentY = plannedYPositions.get(parentId);
+            rootY = parentY !== undefined ? parentY : 0;
+        }
+
+        branch.history.forEach((item, i) => {
+                const y = rootY - (i + 1) * 50;
+                plannedYPositions.set(item.hash, y);
+            });
+    });
+
+    console.log(plannedYPositions)
+
+ 
+
 
     // Accessing branches in order, create nodes and edges for each branch
     meta.branchOrder.forEach((branchName, branchIndex) => {
         const branch = meta.branches[branchName];
-        console.log(branchName)
+        const rootY = branchRootY.get(branchName);
+
         // Iterate over each history item in the branch
         branch.history.forEach((item, nodeIndex) => {
             const nodeId = item.hash;
+
+            if (existingHistoryNodeIDs.has(nodeId)) return;
+
+            const yPos = plannedYPositions.get(item.hash);
+            
+            nodeIdToYPos.set(nodeId, yPos);
+
             let label;
             let parent = []
             // we now store the parent module data in the change message, so extract that so it doesn't appear as the label, and place it in the 'parent' prop
@@ -32,38 +99,34 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
                 label = `loaded ${item.msg}`
                 // parent = []
             } 
-  
 
+            const newNode = {
+                group: "nodes",
+                data: {
+                    id: nodeId,
+                    label: label,
+                    color: docHistoryGraphStyling.nodeColours[item.msg.split(" ")[0]] || "#ccc",
+                    branch: branchName,
+                    parents: parent || null,
+                    timeStamp: item.timeStamp
 
-            // Check if the node already exists in the history graph
-            if (!existingHistoryNodeIDs.has(nodeId)) {
-                const newNode = {
-                    group: "nodes",
-                    data: {
-                        id: nodeId,
-                        label: label,
-                        color: docHistoryGraphStyling.nodeColours[item.msg.split(" ")[0]] || "#ccc",
-                        branch: branchName,
-                        parents: parent || null,
-                        timeStamp: item.timeStamp
-
-                    },
-                    // Add a manual position!
-                    position: {
-                        x: branchIndex * 220, // horizontal slot per branch
-                        y: -nodeIndex * 50   // stack nodes top to bottom
-                    }
-                    
-                    
+                },
+                // Add a manual position!
+                position: {
+                    x: branchIndex * 220, // horizontal slot per branch
+                    y: yPos   // stack nodes top to bottom
                 }
-
                 
-                // Add node to the history graph
-                nodes.push(newNode);
-
-                // Add the newly added node's ID to the set to track it
-                existingHistoryNodeIDs.add(nodeId);
+                
             }
+
+            
+            // Add node to the history graph
+            nodes.push(newNode);
+
+            // Add the newly added node's ID to the set to track it
+            existingHistoryNodeIDs.add(nodeId);
+            
         });
     });
 
