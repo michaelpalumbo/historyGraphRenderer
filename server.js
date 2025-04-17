@@ -16,7 +16,7 @@ let peers = {
 let meta;
 let existingHistoryNodeIDs = new Set()
 
-let graphStyle = 'DAG'
+let graphStyle = 'MANUAL_DAG'
 let graphLayouts = {
     // https://github.com/dagrejs/dagre/wiki#configuring-the-layout
     DAG: {
@@ -27,6 +27,13 @@ let graphLayouts = {
         rankSep: 50, // Optional: adjust rank separation for vertical spacing,
         fit: false,
         padding: 30
+    },
+    // wrote this specifically to fix the ordering of branches being changed on the fly in the dagre package version (above)
+    MANUAL_DAG: {
+        name: 'preset',
+        fit: false,
+        padding: 30,
+        animate: false
     },
     breadthfirst: {
         name: 'breadthfirst',
@@ -86,6 +93,8 @@ const historyDAG_cy = cytoscape({
                 'text-valign': 'center',    // Vertically center the label
                 'text-halign': 'right',      // Horizontally align label to the left of the node
                 'text-margin-x': 15, // 
+                'text-wrap': 'wrap',
+                'text-max-width': 120
                 // 'text-margin-y': 15, // move the label down a little to make space for branch edges
                 // 'shape': 'data(shape)' // set this for accessibility (colour blindness)
             }

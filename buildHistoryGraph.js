@@ -11,11 +11,11 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
     const edges = [];
 
     // Accessing branches in order, create nodes and edges for each branch
-    meta.branchOrder.forEach((branchName) => {
+    meta.branchOrder.forEach((branchName, branchIndex) => {
         const branch = meta.branches[branchName];
-
+        console.log(branchName)
         // Iterate over each history item in the branch
-        branch.history.forEach((item) => {
+        branch.history.forEach((item, nodeIndex) => {
             const nodeId = item.hash;
             let label;
             let parent = []
@@ -48,7 +48,16 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
                         timeStamp: item.timeStamp
 
                     },
+                    // Add a manual position!
+                    position: {
+                        x: branchIndex * 220, // horizontal slot per branch
+                        y: -nodeIndex * 50   // stack nodes top to bottom
+                    }
+                    
+                    
                 }
+
+                
                 // Add node to the history graph
                 nodes.push(newNode);
 
