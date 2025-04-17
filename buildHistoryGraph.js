@@ -9,7 +9,6 @@
 function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling) {
     const nodes = [];
     const edges = [];
-    const nodeIdToYPos = new Map();
 
     // Accessing branches in order, create nodes and edges for each branch
     meta.branchOrder.forEach((branchName, branchIndex) => {
@@ -38,27 +37,6 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
 
             // Check if the node already exists in the history graph
             if (!existingHistoryNodeIDs.has(nodeId)) {
-
-                // store y pos of each node so that when creating a new branch we can set the 0th node of that branch to the same y as its parent in its origin branch
-                let yPos;
-
-                if (nodeIndex === 0 && branchIndex > 0 && parent) {
-                    // get parent ID from string
-                    const parentId = Array.isArray(parent) ? parent[0] : parent;
-                    const parentY = nodeIdToYPos.get(parentId);
-                
-                    if (parentY !== undefined) {
-                        yPos = parentY; // align with parent in earlier branch
-                    } else {
-                        yPos = 0; // fallback
-                    }
-                } else {
-                    yPos = -nodeIndex * 50;
-                }
-            
-                nodeIdToYPos.set(nodeId, yPos); // Track y-position
-
-                console.log('parent', parent)
                 const newNode = {
                     group: "nodes",
                     data: {
@@ -72,8 +50,8 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
                     },
                     // Add a manual position!
                     position: {
-                        x: branchIndex * 150, // horizontal slot per branch
-                        y: yPos   // stack nodes top to bottom
+                        x: branchIndex * 220, // horizontal slot per branch
+                        y: -nodeIndex * 50   // stack nodes top to bottom
                     }
                     
                     
