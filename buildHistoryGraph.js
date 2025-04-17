@@ -18,7 +18,7 @@ const historyGraphYIncrement = 75
 function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling) {
 
     const outputPath = join(__dirname, 'meta.json');
-    writeFileSync(outputPath, JSON.stringify(meta, null, 2));
+    // writeFileSync(outputPath, JSON.stringify(meta, null, 2));
     const nodes = [];
     const edges = [];
 
