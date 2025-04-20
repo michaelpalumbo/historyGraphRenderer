@@ -86,6 +86,8 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
 
             let label;
             let parent = []
+            let sequencerTable 
+            
             // we now store the parent module data in the change message, so extract that so it doesn't appear as the label, and place it in the 'parent' prop
             // check if its a $PARENT or $PARENTS condition
             if(item.msg.includes('$PARENT ')){
@@ -98,7 +100,10 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
             } else if (item.msg.includes('.fpsynth')){
                 label = `loaded ${item.msg}`
                 // parent = []
-            } 
+            } else if(item.msg.includes('sequence')){
+                label = item.msg.split('tableData:')[0]
+                sequencerTable = JSON.parse(item.msg.split('tableData:')[1])
+            }
 
             const newNode = {
                 group: "nodes",
@@ -108,6 +113,7 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
                     color: docHistoryGraphStyling.nodeColours[item.msg.split(" ")[0]] || "#ccc",
                     branch: branchName,
                     parents: parent || null,
+                    sequencerTable: sequencerTable || null,
                     timeStamp: item.timeStamp
 
                 },
