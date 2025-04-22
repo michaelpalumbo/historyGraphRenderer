@@ -275,6 +275,7 @@ wss.on('connection', (ws, req) => {
                 ws.room = room;
                 ws.peerID = msg.peerID
                 console.log(`New client assigned to ${room}`);
+                console.log('number of peers in room',  )
                 // update all lobby pages
                 wss.clients.forEach((client) => {
                     if (client !== ws && client.lobby === true) {
