@@ -1,12 +1,11 @@
 /**
  * Generates nodes and edges for a history graph.
  *
- * @param {Object} meta - Metadata containing branch order and history details.
+ * @param {Object} patchHistory - Metadata containing branch order and history details.
  * @param {Set} existingHistoryNodeIDs - Set of existing node IDs to avoid duplicates.
  * @param {Object} docHistoryGraphStyling - Styling information for nodes.
  * @returns {Object} - An object containing nodes, edges, and updated existingHistoryNodeIDs.
  */
-import { writeFileSync } from 'fs'
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -15,10 +14,10 @@ const __dirname = dirname(__filename);
 
 const historyGraphYIncrement = 75
 
-function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling) {
+function buildHistoryGraph(patchHistory, existingHistoryNodeIDs, docHistoryGraphStyling) {
 
-    const outputPath = join(__dirname, 'meta.json');
-    // writeFileSync(outputPath, JSON.stringify(meta, null, 2));
+    const outputPath = join(__dirname, 'patchHistory.json');
+    // writeFileSync(outputPath, JSON.stringify(patchHistory, null, 2));
     const nodes = [];
     const edges = [];
 
@@ -26,8 +25,8 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
     const branchRootY = new Map();
 
     // Pass 1: calculate branch root Y positions
-    meta.branchOrder.forEach((branchName, branchIndex) => {
-    const branch = meta.branches[branchName];
+    patchHistory.branchOrder.forEach((branchName, branchIndex) => {
+    const branch = patchHistory.branches[branchName];
     const firstItem = branch.history[0];
     let y;
 
@@ -44,8 +43,8 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
 
     const plannedYPositions = new Map();
 
-    meta.branchOrder.forEach(branchName => {
-        const branch = meta.branches[branchName];
+    patchHistory.branchOrder.forEach(branchName => {
+        const branch = patchHistory.branches[branchName];
         const firstItem = branch.history[0];
 
         let rootY = 0;
@@ -70,10 +69,9 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
 
 
     // Accessing branches in order, create nodes and edges for each branch
-    meta.branchOrder.forEach((branchName, branchIndex) => {
-        const branch = meta.branches[branchName];
+    patchHistory.branchOrder.forEach((branchName, branchIndex) => {
+        const branch = patchHistory.branches[branchName];
         const rootY = branchRootY.get(branchName);
-
         // Iterate over each history item in the branch
         branch.history.forEach((item, nodeIndex) => {
             const nodeId = item.hash;
@@ -103,6 +101,10 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
             } else if(item.msg.includes('sequence')){
                 label = item.msg.split('tableData:')[0]
                 sequencerTable = JSON.parse(item.msg.split('tableData:')[1])
+            }
+            else if(item.msg.includes('draw')){
+                label = item.msg
+                // sequencerTable = JSON.parse(item.msg.split('tableData:')[1])
             }
 
             const newNode = {
@@ -138,8 +140,8 @@ function buildHistoryGraph(meta, existingHistoryNodeIDs, docHistoryGraphStyling)
 
     // now that all nodes are made, create their edges
 
-    meta.branchOrder.forEach((branchName) => {
-        const branch = meta.branches[branchName];
+    patchHistory.branchOrder.forEach((branchName) => {
+        const branch = patchHistory.branches[branchName];
 
         // Iterate over each history item in the branch
         branch.history.forEach((item) => {

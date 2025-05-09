@@ -8,12 +8,26 @@ import express from 'express';
 import { createServer} from 'http';
 
 import { WebSocketServer } from 'ws';
+import dotenv from 'dotenv';
+dotenv.config();
+import { Pool } from 'pg';
+
+console.log('🔍 DATABASE_URL:', 'postgresql://localhost:5432/forkingpaths'); // ← add this
+
+
+const pool = new Pool({
+    connectionString: 'postgresql://localhost:5432/forkingpaths',
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+});
+
+import patchHistoryRouter from './patchHistoryStorage.js';
+import synthRouter from './synthFiles.js';
 
 let peers = {
 
 }
 
-let meta;
+let patchHistory;
 let existingHistoryNodeIDs = new Set()
 
 let graphStyle = 'MANUAL_DAG'
@@ -216,6 +230,13 @@ const PORT = process.env.PORT || 3001;
 // Create an Express app (Only for handling basic HTTP requests)
 const app = express();
 
+app.use(express.json({ limit: '10mb' })); // for parsing JSON bodies
+
+// 
+// app.use('/api/patchHistories', patchHistoryRouter);
+// app.use('/api/synthFiles', synthRouter);
+
+
 // Serve static frontend files from Vite's `dist` folder
 app.use(express.static('dist'));
 
@@ -243,15 +264,95 @@ wss.on('connection', (ws, req) => {
     const clientIp = req.socket.remoteAddress;
     console.log(`New connection from ${clientIp}`);
     console.log(`Number of clients: ${numClients}`)
+
+    // send all synth templates to client:
+    getSynthTemplates(ws);
+
     // Handle messages received from clients
     ws.on('message', (message) => {
        
         let msg = JSON.parse(message)
 
         switch(msg.cmd){
+            case 'saveSynth':
+                
+                (async () => {
+                    try {
+                            console.log(msg)
+
+                        const { name, author, description, tags, synth_json } = msg.data;
+                
+                        const result = await pool.query(
+                            `INSERT INTO synth_templates
+                            (name, author, description, tags, created_at, synth_json)
+                            VALUES ($1, $2, $3, $4, now(), $5)
+                            RETURNING id`,
+                            [name, author, description, tags, synth_json]
+                        );
+                
+                        ws.send(JSON.stringify({
+                            cmd: 'saveSynthTemplateResponse',
+                            success: true,
+                            synthFileId: result.rows[0].id
+                        }));
+
+                        wss.clients.forEach((client) => {
+                            getSynthTemplates(client);
+                        });
+                        } catch (err) {
+                        console.error('❌ DB error:', err);
+                        ws.send(JSON.stringify({
+                            cmd: 'saveSynthTemplateResponse',
+                            success: false,
+                            error: err.message
+                        }));
+                    }
+                })(); // <-- IIFE to allow await
+
+            break
+
+            case 'getSynthFile':
+                (async () => {
+                    try {
+                        const result = await pool.query(
+                            `SELECT * FROM synth_templates WHERE id = $1`,
+                            [msg.id]
+                        );
+                    
+                        if (result.rows.length === 0) {
+                            ws.send(JSON.stringify({
+                            cmd: 'synthTemplateNotFound',
+                            id: msg.id
+                            }));
+                        } else {
+                            ws.send(JSON.stringify({
+                                cmd: 'retrievedSynthFile',
+                                data: result
+                            }));
+                        }
+                    } catch (err) {
+                        console.error('❌ DB error (getSynthTemplateById):', err);
+                        ws.send(JSON.stringify({
+                            cmd: 'synthTemplateLoaded',
+                            error: err.message
+                        }));
+                    }
+                })();
+            break
+
+            case 'getSynthTemplates':
+                console.log(msg)
+                if(msg.filter){
+                    getSynthTemplates(ws, msg.filter, msg.query);
+                } else {
+                    getSynthTemplates(ws);
+                }
+                    
+
+            break
             case 'updateGraph':
-                meta = msg.meta
-                updateHistoryGraph(ws, meta, msg.docHistoryGraphStyling)
+                patchHistory = msg.patchHistory
+                updateHistoryGraph(ws, patchHistory, msg.docHistoryGraphStyling)
             break
 
             case 'clearHistoryGraph':
@@ -373,15 +474,15 @@ function sendRooms(ws){
     }));
 }
 
-function updateHistoryGraph(ws, meta, docHistoryGraphStyling){
+function updateHistoryGraph(ws, patchHistory, docHistoryGraphStyling){
 
     if (!existingHistoryNodeIDs || existingHistoryNodeIDs.size === 0){
         existingHistoryNodeIDs = new Set(historyDAG_cy.nodes().map(node => node.id()));
     }
 
-
+    if(!patchHistory) return
     const { nodes, edges, historyNodes } = buildHistoryGraph(
-        meta,
+        patchHistory,
         existingHistoryNodeIDs,
         docHistoryGraphStyling
     );
@@ -439,3 +540,72 @@ function expandNodes(cy, collapsedNodeId) {
     // Optionally remove the parent node
     cy.remove(cy.getElementById(collapsedNodeId));
 }
+
+
+async function getSynthTemplates(ws, filter, query) {
+    if(filter){
+        console.log('query detected')
+        switch (filter){
+            case 'tags':
+                const tag = query;
+                const result = await pool.query(
+                    `SELECT id, name, author, description, tags FROM synth_templates WHERE $1 = ANY(tags) ORDER BY created_at DESC`,
+                    [tag]
+                );
+
+                // Filter tags to include only the selected one
+                const filteredRows = result.rows.map(entry => ({
+                    ...entry,
+                    tags: entry.tags.filter(t => t === tag)
+                }));
+                
+                ws.send(JSON.stringify({ cmd: 'synthTemplatesList', data: filteredRows }));
+            break
+
+            case 'authors':
+                const author = query;
+                try {
+                    const result = await pool.query(
+                    `SELECT id, name, author, description, tags
+                    FROM synth_templates
+                    WHERE author = $1
+                    ORDER BY created_at DESC`,
+                    [author]
+                    );
+
+                    ws.send(JSON.stringify({
+                        cmd: 'synthTemplatesList',
+                        data: result.rows
+                    }));
+                } catch (err) {
+                    console.error('DB error (filterByAuthor):', err);
+                    ws.send(JSON.stringify({
+                        cmd: 'synthTemplatesList',
+                        data: [],
+                        error: err.message
+                    }));
+                }
+            break
+        }
+    } else {
+        try {
+            const result = await pool.query(
+                `SELECT id, name, author, description, tags FROM synth_templates ORDER BY created_at DESC`
+            );
+        
+            ws.send(JSON.stringify({
+                cmd: 'synthTemplatesList',
+                data: result.rows
+            }));
+        } catch (err) {
+            console.error('❌ DB error (getSynthTemplates):', err);
+            ws.send(JSON.stringify({
+                cmd: 'synthTemplatesList',
+                data: [],
+                error: err.message
+            }));
+        }
+    }
+    
+  }
+  
