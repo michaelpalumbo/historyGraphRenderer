@@ -85,7 +85,7 @@ function buildHistoryGraph(patchHistory, existingHistoryNodeIDs, docHistoryGraph
             let label;
             let parent = []
             let sequencerTable 
-            
+            let mergeData
             // we now store the parent module data in the change message, so extract that so it doesn't appear as the label, and place it in the 'parent' prop
             // check if its a $PARENT or $PARENTS condition
             if(item.msg.includes('$PARENT ')){
@@ -106,6 +106,18 @@ function buildHistoryGraph(patchHistory, existingHistoryNodeIDs, docHistoryGraph
                 label = item.msg
                 // sequencerTable = JSON.parse(item.msg.split('tableData:')[1])
             }
+            else if(item.msg.includes('loaded')){
+                label = item.msg
+                // sequencerTable = JSON.parse(item.msg.split('tableData:')[1])
+            }
+            else if(item.msg.includes('merge')){
+                label = item.msg
+                mergeData = {
+                    parents: item.parent,
+                    nodes: item.nodes
+                }
+                // sequencerTable = JSON.parse(item.msg.split('tableData:')[1])
+            }
 
             const newNode = {
                 group: "nodes",
@@ -116,7 +128,8 @@ function buildHistoryGraph(patchHistory, existingHistoryNodeIDs, docHistoryGraph
                     branch: branchName,
                     parents: parent || null,
                     sequencerTable: sequencerTable || null,
-                    timeStamp: item.timeStamp
+                    timeStamp: item.timeStamp,
+                    mergeData: mergeData || null
 
                 },
                 // Add a manual position!
@@ -152,8 +165,6 @@ function buildHistoryGraph(patchHistory, existingHistoryNodeIDs, docHistoryGraph
             if (item.parent) {
                 // first check if item.parent is an array. if it is, then this node is a merge between 2 parents
                 if(Array.isArray(item.parent)){
-                    console.log('this is a merge')
-
                     item.parent.forEach((parent, index)=>{
                         edges.push({
                             group: "edges",

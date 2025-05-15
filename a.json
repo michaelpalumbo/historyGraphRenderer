@@ -1,0 +1,22 @@
+nodes: [
+[0]     {
+[0]       id: 'a5d0376ad704fb2396311a2bcb31030cc78b24a7f423c7034e8bf9fe59f3197c',
+[0]       label: 'paramUpdate freq = 3749.86 HighPassFilter_Monkey',
+[0]       color: '#6b00b8',
+[0]       branch: 'main',
+[0]       parents: 'HighPassFilter_Monkey_0f1ca9ad208e',
+[0]       sequencerTable: null,
+[0]       timeStamp: 1747102652644,
+[0]       mergeData: null
+[0]     },
+[0]     {
+[0]       id: 'eb7d54f04bf60f09f977c6bcdc0ea17b00892ba69b274cb5e55b1be8231a1741',
+[0]       label: 'paramUpdate frequency = 5.73 LFO_Fangtooth',
+[0]       color: '#6b00b8',
+[0]       branch: '0196c76e-f3bc-7404-967a-2be9ee742ea4',
+[0]       parents: 'LFO_Fangtooth_a7572c936231',
+[0]       sequencerTable: null,
+[0]       timeStamp: 1747102660278,
+[0]       mergeData: null
+[0]     }
+[0]   ]
