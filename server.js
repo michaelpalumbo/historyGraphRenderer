@@ -12,13 +12,15 @@ import dotenv from 'dotenv';
 dotenv.config();
 import { Pool } from 'pg';
 
-console.log('🔍 DATABASE_URL:', 'postgresql://localhost:5432/forkingpaths'); // ← add this
-
-
 const pool = new Pool({
     connectionString: 'postgresql://localhost:5432/forkingpaths',
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
+
+pool.query('SELECT current_database(), current_user, current_schema()')
+  .then(res => console.log('🔍 DB Connection:', res.rows[0]))
+  .catch(err => console.error('❌ DB info error:', err));
+
 
 import patchHistoryRouter from './patchHistoryStorage.js';
 import synthRouter from './synthFiles.js';
@@ -341,7 +343,6 @@ wss.on('connection', (ws, req) => {
             break
 
             case 'getSynthTemplates':
-                console.log(msg)
                 if(msg.filter){
                     getSynthTemplates(ws, msg.filter, msg.query);
                 } else {
@@ -490,13 +491,19 @@ function updateHistoryGraph(ws, patchHistory, docHistoryGraphStyling){
     const stringed = JSON.parse(JSON.stringify(nodes, null, 2))
     // Run the layout and get the rendered graph
     // historyDAG_cy.layout(layout).run();
-    if(nodes.length > 0){
-        historyDAG_cy.add(stringed);
-
-    }
-    if(edges.length > 0){
-        historyDAG_cy.add(edges);
-
+    try {
+        if (nodes.length > 0) {
+            historyDAG_cy.add(stringed);
+        }
+        if (edges.length > 0) {
+            historyDAG_cy.add(edges); // 👈 this is where it was crashing
+        }
+    } catch (err) {
+        console.error('❌ Failed to update Cytoscape graph:', err.message);
+        console.error('   ➤ Possibly due to missing source or target node.');
+        console.error('   ➤ Reason:', err.stack);
+        console.error('   ➤ Edges:', JSON.stringify(edges, null, 2));
+        return; // prevent graph layout from running
     }
     existingHistoryNodeIDs = historyNodes
 
@@ -540,6 +547,7 @@ function expandNodes(cy, collapsedNodeId) {
     // Optionally remove the parent node
     cy.remove(cy.getElementById(collapsedNodeId));
 }
+
 
 
 async function getSynthTemplates(ws, filter, query) {
