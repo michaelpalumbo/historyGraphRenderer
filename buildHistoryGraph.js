@@ -134,7 +134,7 @@ function buildHistoryGraph(patchHistory, existingHistoryNodeIDs, docHistoryGraph
                 },
                 // Add a manual position!
                 position: {
-                    x: branchIndex * 220, // horizontal slot per branch
+                    x: branchIndex * 110, // horizontal slot per branch
                     y: yPos   // stack nodes top to bottom
                 }
                 

@@ -12,10 +12,23 @@ import dotenv from 'dotenv';
 dotenv.config();
 import { Pool } from 'pg';
 
+// const pool = new Pool({
+//     connectionString: 'postgresql://localhost:5432/forkingpaths',
+//     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+// });
+
+
 const pool = new Pool({
-    connectionString: 'postgresql://localhost:5432/forkingpaths',
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  connectionString:
+    process.env.NODE_ENV === 'production'
+      ? process.env.DATABASE_URL
+      : 'postgresql://localhost:5432/forkingpaths',
+  ssl:
+    process.env.NODE_ENV === 'production'
+      ? { rejectUnauthorized: false }
+      : false,
 });
+
 
 pool.query('SELECT current_database(), current_user, current_schema()')
   .then(res => console.log('🔍 DB Connection:', res.rows[0]))
@@ -270,6 +283,8 @@ wss.on('connection', (ws, req) => {
     // send all synth templates to client:
     getSynthTemplates(ws);
 
+
+
     // Handle messages received from clients
     ws.on('message', (message) => {
        
@@ -503,6 +518,15 @@ function updateHistoryGraph(ws, patchHistory, docHistoryGraphStyling){
         console.error('   ➤ Possibly due to missing source or target node.');
         console.error('   ➤ Reason:', err.stack);
         console.error('   ➤ Edges:', JSON.stringify(edges, null, 2));
+        // send message to client to force a new patch history
+        setTimeout(() => {
+            ws.send(JSON.stringify({
+                cmd: "forceNewPatchHistoryDueToError", 
+                message: 'Server failed to create graph; forcing a new patch history now...'
+            }))
+        }, 1000);
+
+
         return; // prevent graph layout from running
     }
     existingHistoryNodeIDs = historyNodes
@@ -517,38 +541,6 @@ function updateHistoryGraph(ws, patchHistory, docHistoryGraphStyling){
         data: graphJSON
     }))
 }
-
-// Collapsing nodes into a parent node
-function collapseNodes(cy, nodeIds, collapsedNodeId) {
-    // Add the parent (collapsed) node
-    cy.add({
-        group: 'nodes',
-        data: {
-            id: collapsedNodeId,
-            label: 'Collapsed Node'
-        }
-    });
-
-    // Update the parent of the selected nodes
-    nodeIds.forEach((nodeId) => {
-        const node = cy.getElementById(nodeId);
-        node.move({ parent: collapsedNodeId });
-    });
-
-    // Optionally hide the child nodes to simulate collapsing
-    cy.$(`#${collapsedNodeId}`).children().hide();
-}
-
-// Expanding the collapsed node
-function expandNodes(cy, collapsedNodeId) {
-    // Show the child nodes
-    cy.$(`#${collapsedNodeId}`).children().show();
-
-    // Optionally remove the parent node
-    cy.remove(cy.getElementById(collapsedNodeId));
-}
-
-
 
 async function getSynthTemplates(ws, filter, query) {
     if(filter){
