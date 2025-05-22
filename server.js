@@ -12,6 +12,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 import { Pool } from 'pg';
 
+
 // const pool = new Pool({
 //     connectionString: 'postgresql://localhost:5432/forkingpaths',
 //     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
@@ -283,6 +284,8 @@ wss.on('connection', (ws, req) => {
     // send all synth templates to client:
     getSynthTemplates(ws);
 
+    // send all patch histories tags
+    getPatchHistories(ws)
 
 
     // Handle messages received from clients
@@ -291,11 +294,152 @@ wss.on('connection', (ws, req) => {
         let msg = JSON.parse(message)
 
         switch(msg.cmd){
+            case 'newPatchHistory':
+
+                (async () => {
+                    try {
+                        const {
+                            name,
+                            authors,
+                            description,
+                            modules,
+                            synth_template,
+                            patch_binary,       // should be sent as base64 from the client
+                            forked_from_id,     // may be null if this is the root
+                            
+                        } = msg.data;
+
+                        // Decode base64 patch binary from client
+                        const binaryBuffer = Buffer.from(patch_binary, 'base64');
+
+                        const result = await pool.query(
+                            `INSERT INTO patch_histories
+                            (name, authors, description, modules, synth_template, patch_binary, forked_from_id, created_at)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+                            RETURNING id, forked_from_id, tags, description, name`,
+                            [name, authors, description, modules, synth_template, binaryBuffer, forked_from_id]
+                        );
+                        
+                        
+                        let message = JSON.stringify({
+                            cmd: 'newPatchHistoryDatabaseID',
+                            success: true,
+                            patchHistoryId: result.rows[0].id,
+                            name: result.rows[0].name,
+                            forked_from_id: result.rows[0].forked_from_id,
+                            tags: result.rows[0].tags,
+                            description: result.rows[0].description,
+                        })
+
+                       
+                        
+
+                        await getUpdatedHistories(ws)
+
+                        ws.send(message);
+
+                    } catch (err) {
+                        console.error('❌ DB error (savePatchHistory):', err);
+                        ws.send(JSON.stringify({
+                            cmd: 'savePatchHistoryResponse',
+                            success: false,
+                            error: err.message
+                        }));
+                    }
+                })();
+
+            break;
+
+            case 'newFork':
+
+              (async () => {
+                try {
+                    const result = await pool.query(
+                    `INSERT INTO patch_histories (
+                        name,
+                        authors,
+                        description,
+                        tags,
+                        modules,
+                        synth_template,
+                        patch_binary,
+                        forked_from_id,
+                        created_at
+                    )
+                    SELECT
+                        name,
+                        authors,
+                        description,
+                        tags,
+                        modules,
+                        synth_template,
+                        patch_binary,
+                        id,             -- original id becomes forked_from_id
+                        now()
+                    FROM patch_histories
+                    WHERE id = $1
+                    RETURNING id;`,
+                    [msg.data.forked_from_id]
+                    );
+
+                    // ✅ Send back the new fork's id so the client can load or track it
+                    ws.send(JSON.stringify({
+                        cmd: 'newFork',
+                        success: true,
+                        newId: result.rows[0].id
+                    }));
+
+                    // getUpdatedHistories(ws)
+
+                } catch (err) {
+                    console.error('❌ DB error (newFork):', err);
+                    ws.send(JSON.stringify({
+                    cmd: 'newFork',
+                    success: false,
+                    error: err.message
+                    }));
+                }
+                })();
+
+
+            break;
+
+
+            case 'getPatchHistory':
+                
+                (async () => {
+                    try {
+                        const result = await pool.query(
+                            `SELECT * FROM patch_histories WHERE id = $1`,
+                            [msg.id]
+                        );
+                    
+                        if (result.rows.length === 0) {
+                            ws.send(JSON.stringify({
+                                cmd: 'patchHistoryNotFound',
+                                id: msg.id
+                            }));
+                        } else {
+                            ws.send(JSON.stringify({
+                                cmd: 'retrievedPatchHistory',
+                                data: result.rows[0]
+                            }));
+                        }
+                    } catch (err) {
+                        console.error('❌ DB error (getPatchHistoryById):', err);
+                        ws.send(JSON.stringify({
+                            cmd: 'patchHistoryLoaded',
+                            error: err.message
+                        }));
+                    }
+                })();
+            break
+
+
             case 'saveSynth':
                 
                 (async () => {
                     try {
-                            console.log(msg)
 
                         const { name, author, description, tags, synth_json } = msg.data;
                 
@@ -326,6 +470,72 @@ wss.on('connection', (ws, req) => {
                     }
                 })(); // <-- IIFE to allow await
 
+            break
+
+            case 'updatePatchHistoryEntry':
+
+
+                (async () => {
+                    try {
+                    const { id, patch_binary, authors, forked_from_id } = msg.data;
+
+                    // Decode base64 patch binary from client
+                    const binaryBuffer = Buffer.from(patch_binary, 'base64');
+                    
+                    const result = await pool.query(
+                        `UPDATE patch_histories
+                        SET patch_binary = $1,
+                            authors = $2,
+                            forked_from_id = $3
+                        WHERE id = $4`,
+                        [binaryBuffer, authors, forked_from_id, id]
+                    );
+
+                    getUpdatedHistories(ws)
+
+                    } catch (err) {
+                    console.error('❌ DB error (updatePatcHistory):', err);
+                    ws.send(JSON.stringify({
+                        cmd: 'updatePatchHistoryResponse',
+                        success: false,
+                        error: err.message
+                    }));
+                    }
+                })();
+            break
+
+            case 'updatePatchHistoryMetadata':
+
+
+                (async () => {
+          
+                    try {
+                    const { id, name, description, tags } = msg.data;
+
+                    const cleanTags = Array.isArray(tags)
+                    ? tags.map(t => t.trim()).filter(t => t.length > 0)
+                    : [];
+
+                    const result = await pool.query(
+                        `UPDATE patch_histories
+                        SET name = $1,
+                            description = $2,
+                            tags = $3
+                        WHERE id = $4`,
+                        [name, description, cleanTags, id]
+                    );
+
+                    getUpdatedHistories(ws)
+
+                    } catch (err) {
+                    console.error('❌ DB error (updatePatchMetadata):', err);
+                    ws.send(JSON.stringify({
+                        cmd: 'updatePatchHistoryResponse',
+                        success: false,
+                        error: err.message
+                    }));
+                    }
+                })();
             break
 
             case 'getSynthFile':
@@ -366,6 +576,19 @@ wss.on('connection', (ws, req) => {
                     
 
             break
+
+            case 'getPatchHistories':
+                if(msg.filter){
+                    getPatchHistories(ws, msg.filter, msg.query);
+                } else {
+                    getPatchHistories(ws);
+                }
+                    
+
+            break
+
+
+
             case 'updateGraph':
                 patchHistory = msg.patchHistory
                 updateHistoryGraph(ws, patchHistory, msg.docHistoryGraphStyling)
@@ -609,3 +832,89 @@ async function getSynthTemplates(ws, filter, query) {
     
   }
   
+
+async function getPatchHistories(ws, filter, query) {
+  
+    try {
+        let result;
+
+        switch (filter) {
+            case 'authors':
+                result = await pool.query(
+                    `SELECT * FROM patch_histories WHERE authors @> ARRAY[$1] ORDER BY created_at DESC`,
+                    [query[0]]
+                );
+                break;
+
+            case 'modules':
+                result = await pool.query(
+                    `SELECT * FROM patch_histories WHERE $1 = ANY(modules) ORDER BY created_at DESC`,
+                    [query]
+                );
+                break;
+
+            case 'forksOf':
+                result = await pool.query(
+                    `SELECT * FROM patch_histories WHERE forked_from_id = $1 ORDER BY created_at ASC`,
+                    [query]
+                );
+                break;
+
+            case 'id':
+                result = await pool.query(
+                    `SELECT * FROM patch_histories WHERE id = $1`,
+                    [query]
+                );
+                break;
+
+            default:
+                result = await pool.query(
+                    `SELECT * FROM patch_histories ORDER BY created_at DESC LIMIT 50`
+                );
+        }
+        
+        ws.send(JSON.stringify({
+            cmd: 'patchHistoriesList',
+            data: result.rows
+        }));
+
+    } catch (err) {
+        console.error('❌ DB error (getPatchHistories):', err);
+        ws.send(JSON.stringify({
+            cmd: 'patchHistoriesList',
+            data: [],
+            error: err.message
+        }));
+    }
+}
+
+async function getUpdatedHistories(ws){
+
+    try {
+        let updatedList = await pool.query(
+            `SELECT
+                id,
+                name,
+                authors,
+                description,
+                tags,
+                modules,
+                forked_from_id,
+                created_at
+                FROM patch_histories
+                ORDER BY created_at DESC
+                LIMIT 50;
+`
+        );
+        wss.clients.forEach((client) => {
+            client.send(JSON.stringify({
+                cmd: 'patchHistoriesList',
+                data: updatedList.rows
+            }));
+        });
+
+    } catch (err) {
+        console.error('❌ DB error (getUpdatedHistoryList):', err);
+    }
+
+}
