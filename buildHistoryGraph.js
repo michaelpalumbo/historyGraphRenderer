@@ -24,6 +24,9 @@ function buildHistoryGraph(patchHistory, existingHistoryNodeIDs, docHistoryGraph
     const nodeIdToYPos = new Map();
     const branchRootY = new Map();
 
+    if(!patchHistory.branchOrder){
+        return
+    }
     // Pass 1: calculate branch root Y positions
     patchHistory.branchOrder.forEach((branchName, branchIndex) => {
     const branch = patchHistory.branches[branchName];

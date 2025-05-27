@@ -719,7 +719,7 @@ function updateHistoryGraph(ws, patchHistory, docHistoryGraphStyling){
         existingHistoryNodeIDs = new Set(historyDAG_cy.nodes().map(node => node.id()));
     }
 
-    if(!patchHistory) return
+    if(!patchHistory || !patchHistory.branchOrder) return
     const { nodes, edges, historyNodes } = buildHistoryGraph(
         patchHistory,
         existingHistoryNodeIDs,
