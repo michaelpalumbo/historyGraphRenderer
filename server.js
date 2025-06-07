@@ -594,6 +594,7 @@ wss.on('connection', (ws, req) => {
                 updateHistoryGraph(ws, patchHistory, msg.docHistoryGraphStyling)
             break
 
+            
             case 'clearHistoryGraph':
                 historyDAG_cy.elements().remove();
                 if(existingHistoryNodeIDs){
@@ -601,6 +602,15 @@ wss.on('connection', (ws, req) => {
                 }
                 historyDAG_cy.layout(graphLayouts[graphStyle]).run()
             break
+
+            // case 'eraseRoomPatchHistory':
+            //     // erase the patch history for all peers in this room
+            //     historyDAG_cy.elements().remove();
+            //     if(existingHistoryNodeIDs){
+            //         existingHistoryNodeIDs.clear()
+            //     }
+            //     historyDAG_cy.layout(graphLayouts[graphStyle]).run()
+            // break
 
             case 'collapseNodes':
 
