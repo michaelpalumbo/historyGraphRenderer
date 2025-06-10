@@ -769,6 +769,7 @@ function updateHistoryGraph(ws, patchHistory, docHistoryGraphStyling){
     // Send the graph JSON back to the client
     const graphJSON = historyDAG_cy.json();
 
+    console.log('graphJSON', graphJSON)
     ws.send(JSON.stringify({
         cmd: "historyGraphRenderUpdate", 
         data: graphJSON
