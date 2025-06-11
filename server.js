@@ -43,6 +43,8 @@ let peers = {
 
 }
 
+let sequencerStates = {}
+
 let patchHistory;
 let existingHistoryNodeIDs = new Set()
 
@@ -286,8 +288,7 @@ wss.on('connection', (ws, req) => {
 
     // send all patch histories tags
     getPatchHistories(ws)
-
-
+    
     // Handle messages received from clients
     ws.on('message', (message) => {
        
@@ -621,17 +622,26 @@ wss.on('connection', (ws, req) => {
             break
             case 'joinRoom':
                 // Assign the connecting client to a room
-                const room = assignRoom(ws, msg.room);
-                ws.room = room;
+                ws.room = assignRoom(ws, msg.room);
+                
                 ws.peerID = msg.peerID
-                console.log(`New client assigned to ${room}`);
-                console.log('number of peers in room',  )
+                console.log(`New client assigned to ${ws.room}`);
+                // console.log('number of peers in room',  )
                 // update all lobby pages
                 wss.clients.forEach((client) => {
                     if (client !== ws && client.lobby === true) {
                         sendRooms(client)
                     }
                 });
+
+                if(sequencerStates[ws.room]){
+                    console.log('sequencer state exists for this room:', sequencerStates[ws.room])
+                } else {
+                    sequencerStates[ws.room] = {}
+                    console.log('sequencerStates', sequencerStates)
+                }
+                // console.log('ws.room', ws.room, 'room info', rooms[ws.room])
+
             break
             case 'newPeer':
                 // Convert the incoming message to a string if it’s a Buffer.
@@ -664,6 +674,23 @@ wss.on('connection', (ws, req) => {
                 // Build an array of active rooms.
                 sendRooms(ws)
             break;
+
+            case 'sequencerStateUpdate':
+                console.log('update:', msg)
+                // console.log('room', ws.room, 'ws.room', ws.room)
+                sequencerStates[msg.room] = msg.state
+                
+                console.log('sequencerStates', sequencerStates)
+                
+            break
+
+            case 'getSequencerState':
+                ws.send(JSON.stringify({
+                    cmd: 'sequencerState',
+                    state: sequencerStates[msg.room]
+                }))
+                // console.log('ws.room', ws.room, 'room info', rooms[ws.room])
+            break
               
             
             default: console.log('no switch case exists for msg:', message)
@@ -680,7 +707,11 @@ wss.on('connection', (ws, req) => {
             rooms[ws.room] = rooms[ws.room].filter(client => client !== ws);
             // Clean up the room if empty
             if (rooms[ws.room].length === 0) {
-              delete rooms[ws.room];
+                console.log('should be removing seq state now')
+                // first clear the sequencer state
+                delete sequencerStates[ws.room]
+                // then remote the room
+                delete rooms[ws.room];
             }
             // update all lobby clients
             wss.clients.forEach((client) => {
@@ -711,7 +742,8 @@ function sendRooms(ws){
         const roomInfo = {
             room: roomName,
             peer1: rooms[roomName][0].peerID || null,
-            peer2: rooms[roomName].length > 1 ? rooms[roomName][1].peerID || null : null
+            peer2: rooms[roomName].length > 1 ? rooms[roomName][1].peerID || null : null,
+            sequencerState: ws.sequencerState || 'empty'
         };
         activeRooms.push(roomInfo);
         }
@@ -777,7 +809,6 @@ function updateHistoryGraph(ws, patchHistory, docHistoryGraphStyling){
 
 async function getSynthTemplates(ws, filter, query) {
     if(filter){
-        console.log('query detected')
         switch (filter){
             case 'tags':
                 const tag = query;
