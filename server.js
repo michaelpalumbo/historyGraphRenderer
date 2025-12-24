@@ -13,6 +13,170 @@ dotenv.config();
 import { Pool } from 'pg';
 
 
+
+import osc from "osc";
+
+// oscQuery code:
+import { OSCQueryDiscovery } from "oscquery";
+
+let wss;
+
+let namespaceState = {}
+async function fetchRawOnly(ip, port) {
+    const d = new OSCQueryDiscovery();
+    const svc = await d.queryNewService(ip, port);
+
+    await svc.update();
+
+    // 1. get only paths ending in /raw
+    const rawPaths = svc
+        .flat()
+        .map(m => m.full_path)
+        .filter(p => p && p.endsWith("/raw"));
+
+    console.log("RAW endpoints:", rawPaths);
+
+    // 2. read values
+    const rawValues = {};
+
+    for (const path of rawPaths) {
+        const node = svc.resolvePath(path);
+        if (!node) continue;
+
+        // usually 1 arg for /raw, but this is safe
+        const values = [];
+        let i = 0;
+        while (true) {
+        const v = node.getValue(i);
+        if (v === null || v === undefined) break;
+        values.push(v);
+        i++;
+        }
+
+        rawValues[path] = values;
+    }
+
+    console.log("RAW VALUES:");
+    console.log(rawValues);
+
+    namespaceState = stripRawSuffix(rawValues)
+    console.log(namespaceState);
+    if(wss.clients & wss.clients.size > 1){
+        wss.clients.forEach((client) => {
+            client.send(JSON.stringify(namespaceState))
+        });
+    }
+    
+    
+    return namespaceState;
+}
+
+function stripRawSuffix(obj) {
+  const out = {};
+
+  for (const [key, value] of Object.entries(obj)) {
+    const newKey = key.replace(/\/raw$/, "");
+    out[newKey] = value;
+  }
+
+  return out;
+}
+
+// async function fetchParamValues(ip, port) {
+//     const d = new OSCQueryDiscovery();
+//     const svc = await d.queryNewService(ip, port);
+
+//     await svc.update();
+
+//     // discover params via /raw
+//     const rawPaths = svc
+//         .flat()
+//         .map(m => m.full_path)
+//         .filter(p => p && p.endsWith("/raw"));
+
+//     const paramValues = {};
+
+//     for (const rawPath of rawPaths) {
+//         const paramPath = rawPath.replace(/\/raw$/, "");
+//         const node = svc.resolvePath(paramPath);
+//         if (!node) continue;
+
+//         const values = [];
+//         let i = 0;
+//         while (true) {
+//         const v = node.getValue(i);
+//         if (v === null || v === undefined) break;
+//         values.push(v);
+//         i++;
+//         }
+
+//         paramValues[paramPath] = values;
+//     }
+
+//     console.log("PARAM VALUES:");
+//     console.log(paramValues);
+
+//     if(wss.clients & wss.clients.size > 1){
+//         wss.clients.forEach((client) => {
+//             client.send(JSON.stringify(paramValues))
+//         });
+//     }
+    
+//     namespaceState = paramValues
+
+
+//     return paramValues;
+//     }
+
+// Receive (plain args)
+const udpIn = new osc.UDPPort({
+  localAddress: "0.0.0.0",
+  localPort: 30337,
+  metadata: false, // <-- plain args (numbers/strings), not {type,value} objects
+});
+
+// Send (plain args)
+const udpOut = new osc.UDPPort({
+  localAddress: "0.0.0.0",
+  localPort: 0, // ephemeral local port
+  remoteAddress: "127.0.0.1",
+  remotePort: 30338,
+  metadata: false,
+});
+
+
+
+udpIn.on("error", (err) => console.error("OSC IN error:", err));
+udpOut.on("error", (err) => console.error("OSC OUT error:", err));
+
+udpOut.open();
+udpIn.open();
+
+udpOut.on("open", () => {
+    const info = udpOut.socket?.address?.();
+
+    console.log("OSC OUT socket open");
+    if (info) {
+        console.log(
+        `Local UDP socket bound to ${info.address}:${info.port}`
+        );
+    } else {
+        console.log("Local UDP socket bound (ephemeral port)");
+    }
+
+    // fetchParamValues("127.0.0.1", 30339).catch(err => {
+    //     console.error(err?.message ?? err);
+    // });
+    fetchRawOnly("127.0.0.1", 30339).catch(err => {
+        console.error(err?.message ?? err);
+    });
+});
+
+
+
+
+
+
 // const pool = new Pool({
 //     connectionString: 'postgresql://localhost:5432/forkingpaths',
 //     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
@@ -264,7 +428,7 @@ const server = createServer(app, (req, res)=>{
     res.end('WebRTC signaling server is running\n');
 });
 // Create a WebSocket server that only upgrades `/ws` requests
-const wss = new WebSocketServer({ noServer: true });
+wss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (request, socket, head) => {
     console.log('🚀 WebSocket upgrade request received');
@@ -293,10 +457,37 @@ wss.on('connection', (ws, req) => {
     ws.on('message', (message) => {
        
         let msg = JSON.parse(message)
-
+        
         switch(msg.cmd){
-            case 'newPatchHistory':
 
+            case "oscRecall":
+                console.log('recall', msg.data)
+                for (const [address, args] of Object.entries(msg.data)) {
+                    //   // pass-through
+                    if(udpOut){
+                        udpOut.send({
+                            address: address,
+                            args: args,
+                        });
+                    }
+
+                }
+            break
+
+            case 'newPatchHistory':
+                console.log('new patch hitory triggered\ncheck for race conditions\nwhen receiving namespaceState')
+                if(!namespaceState){
+                    return
+                }
+
+                wss.clients.forEach((client) => {
+                    client.send(JSON.stringify({
+                        cmd: 'namespaceState',
+                        data: namespaceState
+                    }))
+                });
+
+                /*
                 (async () => {
                     try {
                         const {
@@ -348,11 +539,12 @@ wss.on('connection', (ws, req) => {
                         }));
                     }
                 })();
+                */
 
             break;
 
             case 'newFork':
-
+                /*
               (async () => {
                 try {
                     const result = await pool.query(
@@ -401,13 +593,13 @@ wss.on('connection', (ws, req) => {
                     }));
                 }
                 })();
-
+                */
 
             break;
 
 
             case 'getPatchHistory':
-                
+                /*
                 (async () => {
                     try {
                         const result = await pool.query(
@@ -434,6 +626,7 @@ wss.on('connection', (ws, req) => {
                         }));
                     }
                 })();
+                */
             break
 
 
@@ -474,7 +667,7 @@ wss.on('connection', (ws, req) => {
             break
 
             case 'updatePatchHistoryEntry':
-
+                /*
 
                 (async () => {
                     try {
@@ -503,11 +696,12 @@ wss.on('connection', (ws, req) => {
                     }));
                     }
                 })();
+                */
             break
 
             case 'updatePatchHistoryMetadata':
 
-
+                /*
                 (async () => {
           
                     try {
@@ -537,6 +731,7 @@ wss.on('connection', (ws, req) => {
                     }));
                     }
                 })();
+                */
             break
 
             case 'getSynthFile':
@@ -579,12 +774,13 @@ wss.on('connection', (ws, req) => {
             break
 
             case 'getPatchHistories':
+                /*
                 if(msg.filter){
                     getPatchHistories(ws, msg.filter, msg.query);
                 } else {
                     getPatchHistories(ws);
                 }
-                    
+                */
 
             break
 
@@ -626,7 +822,6 @@ wss.on('connection', (ws, req) => {
                 
                 ws.peerID = msg.peerID
                 console.log(`New client assigned to ${ws.room}`);
-                // console.log('number of peers in room',  )
                 // update all lobby pages
                 wss.clients.forEach((client) => {
                     if (client !== ws && client.lobby === true) {
@@ -638,9 +833,7 @@ wss.on('connection', (ws, req) => {
                     console.log('sequencer state exists for this room:', sequencerStates[ws.room])
                 } else {
                     sequencerStates[ws.room] = {}
-                    console.log('sequencerStates', sequencerStates)
                 }
-                // console.log('ws.room', ws.room, 'room info', rooms[ws.room])
 
             break
             case 'newPeer':
@@ -676,11 +869,8 @@ wss.on('connection', (ws, req) => {
             break;
 
             case 'sequencerStateUpdate':
-                console.log('update:', msg)
-                // console.log('room', ws.room, 'ws.room', ws.room)
                 sequencerStates[msg.room] = msg.state
                 
-                console.log('sequencerStates', sequencerStates)
                 
             break
 
@@ -689,8 +879,21 @@ wss.on('connection', (ws, req) => {
                     cmd: 'sequencerState',
                     state: sequencerStates[msg.room]
                 }))
-                // console.log('ws.room', ws.room, 'room info', rooms[ws.room])
             break
+
+            // case "externalParamUpdate":
+
+                
+            //     // ws.send(message)
+
+            //     wss.clients.forEach((client) => {
+
+            //         if (client !== ws) {
+            //             console.log('sending', JSON.parse(message))
+            //             client.send(JSON.stringify(msg))
+            //         }
+            //     });
+            // break;
               
             
             default: console.log('no switch case exists for msg:', message)
@@ -707,7 +910,6 @@ wss.on('connection', (ws, req) => {
             rooms[ws.room] = rooms[ws.room].filter(client => client !== ws);
             // Clean up the room if empty
             if (rooms[ws.room].length === 0) {
-                console.log('should be removing seq state now')
                 // first clear the sequencer state
                 delete sequencerStates[ws.room]
                 // then remote the room
@@ -959,3 +1161,18 @@ async function getUpdatedHistories(ws){
     }
 
 }
+
+udpIn.on("message", (msg, timeTag, info) => {
+      console.log(msg.address, msg.args);
+
+    wss.clients.forEach((client) => {
+        client.send(JSON.stringify({
+            cmd: 'OSCmsg',
+            data: msg
+        }))
+
+    });
+
+
+});
+

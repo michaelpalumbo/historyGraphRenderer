@@ -24,9 +24,6 @@ function buildHistoryGraph(patchHistory, existingHistoryNodeIDs, docHistoryGraph
     const nodeIdToYPos = new Map();
     const branchRootY = new Map();
 
-    if(!patchHistory.branchOrder){
-        return
-    }
     // Pass 1: calculate branch root Y positions
     patchHistory.branchOrder.forEach((branchName, branchIndex) => {
     const branch = patchHistory.branches[branchName];
@@ -132,7 +129,8 @@ function buildHistoryGraph(patchHistory, existingHistoryNodeIDs, docHistoryGraph
                     parents: parent || null,
                     sequencerTable: sequencerTable || null,
                     timeStamp: item.timeStamp,
-                    mergeData: mergeData || null
+                    mergeData: mergeData || null,
+                    peer: item.peer || null
 
                 },
                 // Add a manual position!
