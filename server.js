@@ -22,65 +22,68 @@ import { OSCQueryDiscovery } from "oscquery";
 let wss;
 
 let namespaceState = {}
-async function fetchRawOnly(ip, port) {
-    const d = new OSCQueryDiscovery();
-    const svc = await d.queryNewService(ip, port);
 
-    await svc.update();
+//! when we want to have OSC/UDP back into the server for using oscQuery etc, uncomment this:
+// async function fetchRawOnly(ip, port) {
+//     const d = new OSCQueryDiscovery();
+//     const svc = await d.queryNewService(ip, port);
 
-    // 1. get only paths ending in /raw
-    const rawPaths = svc
-        .flat()
-        .map(m => m.full_path)
-        .filter(p => p && p.endsWith("/raw"));
+//     await svc.update();
 
-    console.log("RAW endpoints:", rawPaths);
+//     // 1. get only paths ending in /raw
+//     const rawPaths = svc
+//         .flat()
+//         .map(m => m.full_path)
+//         .filter(p => p && p.endsWith("/raw"));
 
-    // 2. read values
-    const rawValues = {};
+//     console.log("RAW endpoints:", rawPaths);
 
-    for (const path of rawPaths) {
-        const node = svc.resolvePath(path);
-        if (!node) continue;
+//     // 2. read values
+//     const rawValues = {};
 
-        // usually 1 arg for /raw, but this is safe
-        const values = [];
-        let i = 0;
-        while (true) {
-        const v = node.getValue(i);
-        if (v === null || v === undefined) break;
-        values.push(v);
-        i++;
-        }
+//     for (const path of rawPaths) {
+//         const node = svc.resolvePath(path);
+//         if (!node) continue;
 
-        rawValues[path] = values;
-    }
+//         // usually 1 arg for /raw, but this is safe
+//         const values = [];
+//         let i = 0;
+//         while (true) {
+//         const v = node.getValue(i);
+//         if (v === null || v === undefined) break;
+//         values.push(v);
+//         i++;
+//         }
 
-    console.log("RAW VALUES:");
-    console.log(rawValues);
+//         rawValues[path] = values;
+//     }
 
-    namespaceState = stripRawSuffix(rawValues)
-    console.log(namespaceState);
-    if(wss.clients & wss.clients.size > 1){
-        wss.clients.forEach((client) => {
-            client.send(JSON.stringify(namespaceState))
-        });
-    }
+//     console.log("RAW VALUES:");
+//     console.log(rawValues);
+
+//     namespaceState = stripRawSuffix(rawValues)
+//     console.log(namespaceState);
+//     if(wss.clients & wss.clients.size > 1){
+//         wss.clients.forEach((client) => {
+//             client.send(JSON.stringify(namespaceState))
+//         });
+//     }
     
     
-    return namespaceState;
-}
+//     return namespaceState;
+// }
 
-function stripRawSuffix(obj) {
-  const out = {};
+// function stripRawSuffix(obj) {
+//   const out = {};
 
-  for (const [key, value] of Object.entries(obj)) {
-    const newKey = key.replace(/\/raw$/, "");
-    out[newKey] = value;
-  }
+//   for (const [key, value] of Object.entries(obj)) {
+//     const newKey = key.replace(/\/raw$/, "");
+//     out[newKey] = value;
+//   }
 
-  return out;
-}
+//   return out;
+// }
+
 
 // async function fetchParamValues(ip, port) {
 //     const d = new OSCQueryDiscovery();
@@ -127,7 +130,7 @@ function stripRawSuffix(obj) {
 
 //     return paramValues;
 //     }
-
+/*
 // Receive (plain args)
 const udpIn = new osc.UDPPort({
   localAddress: "0.0.0.0",
@@ -175,7 +178,7 @@ udpOut.on("open", () => {
 
 
 
-
+*/
 
 // const pool = new Pool({
 //     connectionString: 'postgresql://localhost:5432/forkingpaths',
@@ -455,14 +458,44 @@ wss.on('connection', (ws, req) => {
     
     // Handle messages received from clients
     ws.on('message', (message) => {
-       
+        // console.log(message)
         let msg = JSON.parse(message)
         
         switch(msg.cmd){
 
+            case 'maxParamUpdate':
+            case 'maxStateRecall':
+            case 'maxCachedState':
+                // console.log(msg)
+
+                wss.clients.forEach((client) => {
+                    client.send(JSON.stringify(msg))
+                });
+                
+            break
+
+            // case 'maxCachedState':
+            //     // console.log(msg)
+
+            //     wss.clients.forEach((client) => {
+            //         client.send(JSON.stringify(msg))
+            //     });
+                
+            // break
+
+            // case 'maxStateRecall':
+            //     // console.log(msg.data)
+            //     wss.clients.forEach((client) => {
+            //         client.send(JSON.stringify(msg))
+            //         // if (client !== ws) {
+                        
+            //         // }
+            //     });
+            // break
             case "oscRecall":
                 console.log('recall', msg.data)
                 for (const [address, args] of Object.entries(msg.data)) {
+                    console.log('recall outgoing', address, args)
                     //   // pass-through
                     if(udpOut){
                         udpOut.send({
@@ -472,20 +505,37 @@ wss.on('connection', (ws, req) => {
                     }
 
                 }
+                
             break
 
             case 'newPatchHistory':
-                console.log('new patch hitory triggered\ncheck for race conditions\nwhen receiving namespaceState')
-                if(!namespaceState){
-                    return
-                }
 
-                wss.clients.forEach((client) => {
-                    client.send(JSON.stringify({
-                        cmd: 'namespaceState',
-                        data: namespaceState
-                    }))
-                });
+            //todo: get the namespace state from max patch then send here:
+                    //             wss.clients.forEach((client) => {
+                    //     client.send(JSON.stringify({
+                    //         cmd: 'namespaceState',
+                    //         data: namespaceState
+                    //     }))
+                    // });
+                //! when we want to have OSC/UDP back into the server for using oscQuery etc, uncomment this:
+                // fetchRawOnly("127.0.0.1", 30339).then((result) => {
+                //     namespaceState = result;
+                //     console.log("Resolved namespaceState:", namespaceState);
+                
+                //     console.log('new patch hitory triggered\ncheck for race conditions\nwhen receiving namespaceState:\n\n', namespaceState)
+                //     if(!namespaceState){
+                //         console.log('error no namespaceState retrieved')
+                //         return
+                //     }
+
+                //     console.log(namespaceState)
+                //     wss.clients.forEach((client) => {
+                //         client.send(JSON.stringify({
+                //             cmd: 'namespaceState',
+                //             data: namespaceState
+                //         }))
+                //     });
+                // });
 
                 /*
                 (async () => {
@@ -1162,17 +1212,17 @@ async function getUpdatedHistories(ws){
 
 }
 
-udpIn.on("message", (msg, timeTag, info) => {
-      console.log(msg.address, msg.args);
+// udpIn.on("message", (msg, timeTag, info) => {
+//       console.log(msg.address, msg.args);
 
-    wss.clients.forEach((client) => {
-        client.send(JSON.stringify({
-            cmd: 'OSCmsg',
-            data: msg
-        }))
+//     wss.clients.forEach((client) => {
+//         client.send(JSON.stringify({
+//             cmd: 'OSCmsg',
+//             data: msg
+//         }))
 
-    });
+//     });
 
 
-});
+// });
 

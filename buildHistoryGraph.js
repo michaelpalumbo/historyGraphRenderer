@@ -119,6 +119,15 @@ function buildHistoryGraph(patchHistory, existingHistoryNodeIDs, docHistoryGraph
                 // sequencerTable = JSON.parse(item.msg.split('tableData:')[1])
             }
 
+            else if(item.msg.includes('$external')){
+                label = item.msg
+                // mergeData = {
+                //     parents: item.parent,
+                //     nodes: item.nodes
+                // }
+                // sequencerTable = JSON.parse(item.msg.split('tableData:')[1])
+            }
+
             const newNode = {
                 group: "nodes",
                 data: {
